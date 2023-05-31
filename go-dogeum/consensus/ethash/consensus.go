@@ -41,9 +41,15 @@ import (
 var (
 	FrontierBlockReward           = big.NewInt(5e+18) // Block reward in wei for successfully mining a block
 	ByzantiumBlockReward          = big.NewInt(3e+18) // Block reward in wei for successfully mining a block upward from Byzantium
-	ConstantinopleBlockReward     = big.NewInt(2e+18) // Block reward in wei for successfully mining a block upward from Constantinople
+	ConstantinopleBlockReward     = big.NewInt(1e+18) // Block reward in wei for successfully mining a block upward from Constantinople
+	PopcatBlockReward, _		  = big.NewInt(0).SetString("5000000000000000000", 10) // 내가 만든 팝켓 코드
 	maxUncles                     = 2                 // Maximum number of uncles allowed in a single block
 	allowedFutureBlockTimeSeconds = int64(15)         // Max seconds from current time allowed for blocks, before they're considered future blocks
+
+	// calcDifficultyEip5133 is the difficulty adjustment algorithm as specified by EIP 5133.
+	// It offsets the bomb a total of 11.4M blocks.
+	// Specification EIP-5133: https://eips.ethereum.org/EIPS/eip-5133
+	calcDifficultyPopcat = makeDifficultyCalculator(big.NewInt(15_000_000))
 
 	// calcDifficultyEip5133 is the difficulty adjustment algorithm as specified by EIP 5133.
 	// It offsets the bomb a total of 11.4M blocks.
@@ -339,6 +345,8 @@ func (ethash *Ethash) CalcDifficulty(chain consensus.ChainHeaderReader, time uin
 func CalcDifficulty(config *params.ChainConfig, time uint64, parent *types.Header) *big.Int {
 	next := new(big.Int).Add(parent.Number, big1)
 	switch {
+	case config.IsPopcat(next):
+		return calcDifficultyPopcat(time, parent)
 	case config.IsGrayGlacier(next):
 		return calcDifficultyEip5133(time, parent)
 	case config.IsArrowGlacier(next):
@@ -363,6 +371,7 @@ var (
 	expDiffPeriod = big.NewInt(100000)
 	big1          = big.NewInt(1)
 	big2          = big.NewInt(2)
+	big5		  = big.NewInt(5)
 	big9          = big.NewInt(9)
 	big10         = big.NewInt(10)
 	bigMinus99    = big.NewInt(-99)
@@ -389,9 +398,9 @@ func makeDifficultyCalculator(bombDelay *big.Int) func(time uint64, parent *type
 		x := new(big.Int)
 		y := new(big.Int)
 
-		// (2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 9
+		// (2 if len(parent_uncles) else 1) - (block_timestamp - parent_timestamp) // 5
 		x.Sub(bigTime, bigParentTime)
-		x.Div(x, big9)
+		x.Div(x, big5)
 		if parent.UncleHash == types.EmptyUncleHash {
 			x.Sub(big1, x)
 		} else {
@@ -657,6 +666,9 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 	}
 	if config.IsConstantinople(header.Number) {
 		blockReward = ConstantinopleBlockReward
+	}
+	if config.IsPopcat(header.Number) {
+		blockReward = PopcatBlockReward
 	}
 	// Accumulate the rewards for the miner and any included uncles
 	reward := new(big.Int).Set(blockReward)
